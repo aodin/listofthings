@@ -1,13 +1,13 @@
-li > h3 {
+ol > li > h3 {
     margin-top:10px;
 }
 
-li span {
+ol > li span {
     margin-left:10px;
     cursor: pointer;
 }
 
-li span:hover {
+ol > li span:hover {
     text-decoration: underline;
 }
 
@@ -16,5 +16,21 @@ ol {
 }
 
 #things {
-    margin-top:30px;
+    margin-top:20px;
+}
+
+#users {
+    margin-top:24px;
+    padding-left:0;
+}
+
+#users li {
+    list-style-type: none;
+    display: inline-block;
+    padding-right: 8px;
+}
+
+.user {
+    width:20px;
+    height:20px;
 }

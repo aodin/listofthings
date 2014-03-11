@@ -137,16 +137,29 @@ func (s *Server) EventsHandler(ws *websocket.Conn) {
 	user := &User{Id: s.counter, conn: ws}
 	log.Println("User connected:", user)
 
+	// Determine the number of current users
+	others := make([]*User, len(s.users))
+	var userIndex int
+	for user, _ := range s.users {
+		others[userIndex] = user
+		userIndex += 1
+	}
+
 	s.AddUser(user)
 	defer s.DeleteUser(user)
+
+	// Send the user a list of other users
+	usersMsg := &Message{
+		Body:    "users",
+		Content: others,
+	}
+	websocket.JSON.Send(ws, usersMsg)
 
 	// Send the initial state of the resource list
 	listMsg := &Message{
 		Body:    "init",
 		Content: s.store.List(),
 	}
-
-	// Send the current list
 	websocket.JSON.Send(ws, listMsg)
 
 	// Report the error that ended the main event loop

@@ -27,6 +27,7 @@ var List = Backbone.View.extend({
     'click #create': 'createItem',
   },
   initialize: function(options) {
+    this.users = options.users;
     _.bindAll(this, 'onmessage', 'onopen', 'onerror', 'onclose');
     this.listenTo(this.collection, 'reset', this.render)
     this.listenTo(this.collection, 'add', this.renderItem)
@@ -37,28 +38,35 @@ var List = Backbone.View.extend({
 
     console.log("Message:", data);
 
-    // TODO a switch makes sense here
-    if (data.body === 'init') {
-      // Initial bootstrap message
-      // TODO This should be behavior of Backbone.sync
-      this.collection.reset(data.content)
-    } else if (data.body === 'create') {
-      // Item creation message
-      this.collection.add(data.content)
-    }  else if (data.body === 'delete') {
-      // Item deletion message
-      // Get the item from the collection and call delete
-      // TODO This should be behavior of Backbone.sync
-      var thing = this.collection.get(data.content.id);
-      this.collection.remove(thing);
-    }  else if (data.body === 'update') {
-      // Item update message
-      // TODO This should be behavior of Backbone.sync
-      this.collection.add(data.content, {merge: true});
-
-    } else if (data.body === 'error') {
-      // Error message, display for a timeout
-      this.$('#errors').prepend(new Error({message: data.content}).el);
+    // TODO This should be behavior of Backbone.sync
+    switch (data.body) {
+      case 'init':
+        this.collection.reset(data.content);
+        break;
+      case 'create':
+        this.collection.add(data.content);
+        break;
+      case 'delete':
+        var thing = this.collection.get(data.content.id);
+        this.collection.remove(thing);
+        break;
+      case 'update':
+        this.collection.add(data.content, {merge: true});
+        break;
+      case 'users':
+      case 'join':
+        this.users.add(data.content);
+        break;
+      case 'left':
+        var user = this.users.get(data.content.id);
+        this.users.remove(user);
+        break;
+      case 'error':
+        // Error message, display for a timeout
+        this.$('#errors').prepend(new Error({message: data.content}).el);
+        break;
+      default:
+        console.log('unknown message from server:', data)
     }
   },
   onopen: function(data) {
@@ -153,6 +161,11 @@ var Item = Backbone.View.extend({
   }
 });
 
+var User = Backbone.Model.extend({});
+var Users = Backbone.Collection.extend({
+  model: User
+});
+
 var Thing = Backbone.Model.extend({});
 var Things = Backbone.Collection.extend({
   model: Thing,
@@ -161,12 +174,49 @@ var Things = Backbone.Collection.extend({
   }
 });
 
+var colors = [
+  "#f0585e", // Red
+  "#5899d2", // Blue
+  "#78c269", // Green
+  "#f9a65a", // Orange
+  "#9d65aa", // Purple
+  "#4fc99d", // Teal
+  "#cc6f57", // Magenta
+  "#d67eb2", // Lavender
+  "#5c68aa", // Blue 2
+  "#5ce160", // Toxic Green
+  "#d6d67e", // Ugly yellow
+];
+
+var UserList = Backbone.View.extend({
+  el: '#users',
+  initialize: function() {
+    this.listenTo(this.collection, 'reset add remove', this.render);
+    // Render the initial state
+    this.render();
+  },
+  render: function() {
+    this.$el.empty();
+    _.each(this.collection.models, function(user) {
+      // Assign colors as a mod of the user id
+      var color = colors[user.get('id') % colors.length];
+      this.$el.append('<li><div class="user" style="background-color:' + color + '"></div></li>');
+    }, this);
+
+    // Add the user count
+    var len = this.collection.length;
+    var userLabel = (len > 1) ? (String(len) + ' Users') : '1 User';
+    this.$el.append('<li>' + userLabel + '</li>');
+    return this;
+  },
+});
+
 function CreateWebsocketSync(ws) {
   var WebsocketSync = function(method, model, options) {
     // Check ready state
     if (ws.readyState != 1) {
       // Return after displaying an error
-      this.$('#errors').prepend(new Error({message: "Could not connect to server. Reconnecting..."}).el);
+      $('#errors').prepend(new Error({message: "Could not connect to server"}).el);
       return;
     }
 
@@ -177,7 +227,14 @@ function CreateWebsocketSync(ws) {
 
 $(function() {
   var things = new Things();
-  var list = new List({collection: things});
+  // Add self as a fake user
+  var users = new Users([{id: 0}]);
+
+  // List needs to know the users because all socket message go through it
+  var list = new List({collection: things, users: users});
+
+  console.log('users:', users.length);
+  var userList = new UserList({collection: users});
 
   var ws = new WebSocket(ws_uri);
 
@@ -185,6 +242,7 @@ $(function() {
   Backbone.sync = CreateWebsocketSync(ws);
 
   // TODO Better event handler
+  // TODO Pass everything through sync
   ws.onopen = list.onopen;
   ws.onmessage = list.onmessage;
   ws.onerror = list.onerror;
