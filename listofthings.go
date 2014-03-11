@@ -8,7 +8,6 @@ import (
 func main() {
 	// Create and parse the server configuration
 	config := server.Parse()
-	log.Println("Config:", config)
 
 	// Create a memory store with a limited number of items
 	memory := server.NewMemoryStore(25)
@@ -23,7 +22,6 @@ func main() {
 			panic(err)
 		}
 	}
-	log.Println(memory.List())
 
 	// Create a new server
 	s, err := server.New(config, memory)
@@ -31,7 +29,7 @@ func main() {
 		panic(err)
 	}
 
-	log.Println("Starting server")
+	log.Println("Starting server on port:", config.Port)
 	err = s.ListenAndServe()
 	if err != nil {
 		panic(err)

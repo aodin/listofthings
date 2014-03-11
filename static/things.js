@@ -1,16 +1,20 @@
 var ws_uri = 'ws://' + document.URL.split('/', 3)[2] + '/events';
 
+// Self-deleting error messages
 var Error = Backbone.View.extend({
   tagName: 'li',
   initialize: function(options) {
     this.message = options.message;
+    var timeout = options.timeout || 4000;
+
     // Destory self after a timeout
     var self = this;
-    setTimeout(function() {self.remove()}, 4000);
+    setTimeout(function() {self.remove()}, timeout);
+
+    // Render automatically
     return this.render();
   },
   render: function() {
-    console.log('rendering new error:', this.message);
     this.$el.html(this.message);
     return this
   },
@@ -23,19 +27,19 @@ var List = Backbone.View.extend({
     'click #create': 'createItem',
   },
   initialize: function(options) {
-    _.bindAll(this, 'onmessage', 'onopen');
+    _.bindAll(this, 'onmessage', 'onopen', 'onerror', 'onclose');
     this.listenTo(this.collection, 'reset', this.render)
     this.listenTo(this.collection, 'add', this.renderItem)
   },
   onmessage: function(result) {
-    console.log('Message:', result);
     var data = JSON.parse(result.data);
     if (!data) return;
+
+    console.log("Message:", data);
 
     // TODO a switch makes sense here
     if (data.body === 'init') {
       // Initial bootstrap message
-      console.log('content:', data.content);
       // TODO This should be behavior of Backbone.sync
       this.collection.reset(data.content)
     } else if (data.body === 'create') {
@@ -46,7 +50,6 @@ var List = Backbone.View.extend({
       // Get the item from the collection and call delete
       // TODO This should be behavior of Backbone.sync
       var thing = this.collection.get(data.content.id);
-      console.log('thing to delete:', thing);
       this.collection.remove(thing);
     }  else if (data.body === 'update') {
       // Item update message
@@ -60,6 +63,12 @@ var List = Backbone.View.extend({
   },
   onopen: function(data) {
     console.log('Socket open');
+  },
+  onerror: function(data) {
+    console.log('Socket error');
+  },
+  onclose: function(data) {
+    console.log('Socket closed');
   },
   proxyEnter: function(e) {
     if (e.keyCode == 13) this.createItem();
@@ -116,11 +125,9 @@ var Item = Backbone.View.extend({
   },
   deleteItem: function() {
     // Delete the item, but wait for the server to respond
-    console.log('destroying model');
     this.model.destroy({wait: true});
   },
   saveItem: function() {
-    console.log('saving item');
     var name = $.trim(this.$('input').val());
     if (!name) {
       $('#errors').prepend(new Error({message: "Empty items cannot be saved"}).el);
@@ -135,7 +142,6 @@ var Item = Backbone.View.extend({
       return;
     }
 
-    console.log('setting name:', name);
     this.model.set('name', name);
     this.model.save();
 
@@ -150,12 +156,20 @@ var Item = Backbone.View.extend({
 var Thing = Backbone.Model.extend({});
 var Things = Backbone.Collection.extend({
   model: Thing,
+  comparator: function(m) {
+    return m.get('timestamp');
+  }
 });
 
 function CreateWebsocketSync(ws) {
   var WebsocketSync = function(method, model, options) {
-    console.log('sync:', method, model, options);
-    console.log(model.toJSON());
+    // Check ready state
+    if (ws.readyState != 1) {
+      // Return after displaying an error
+      this.$('#errors').prepend(new Error({message: "Could not connect to server. Reconnecting..."}).el);
+      return;
+    }
+
     ws.send(JSON.stringify({method: method, content: model.toJSON()}));
   }
   return WebsocketSync;
@@ -165,13 +179,14 @@ $(function() {
   var things = new Things();
   var list = new List({collection: things});
 
-  console.log("Connecting to:", ws_uri);
-  var w = new WebSocket(ws_uri);
+  var ws = new WebSocket(ws_uri);
 
   // Overwrite the sync method
-  Backbone.sync = CreateWebsocketSync(w);
+  Backbone.sync = CreateWebsocketSync(ws);
 
   // TODO Better event handler
-  w.onopen = list.onopen;
-  w.onmessage = list.onmessage;
+  ws.onopen = list.onopen;
+  ws.onmessage = list.onmessage;
+  ws.onerror = list.onerror;
+  ws.onclose = list.onclose;
 });

@@ -11,8 +11,15 @@ import (
 
 type User struct {
 	conn *websocket.Conn
-	Id   int64
-	Name string
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (u *User) String() string {
+	if u.Name == "" {
+		return fmt.Sprintf("%d", u.Id)
+	}
+	return fmt.Sprintf("%s (%d)", u.Name, u.Id)
 }
 
 // Wrap HTTP methods
@@ -27,6 +34,29 @@ type Server struct {
 func (s *Server) ListenAndServe() error {
 	address := fmt.Sprintf(":%d", s.config.Port)
 	return http.ListenAndServe(address, nil)
+}
+
+// Serve the list template
+func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
+	list, ok := s.templates["list"]
+	if !ok {
+		http.Error(w, "Template not found", 500)
+		return
+	}
+	// TODO Bootstrap the things using JSON embeded in the template?
+	attrs := map[string]interface{}{}
+	list.Execute(w, attrs)
+}
+
+// Broadcast method for users
+func (s *Server) BroadcastMessage(msg *Message) {
+	// Send the message to all users
+	for user, _ := range s.users {
+		err := websocket.JSON.Send(user.conn, msg)
+		if err != nil {
+			continue
+		}
+	}
 }
 
 // User Events
@@ -67,34 +97,21 @@ func (s *Server) DeleteUser(user *User) {
 	}
 }
 
-func (s *Server) BroadcastMessage(msg *Message) {
-	// Send the message to all users
-	log.Println("Broadcasting to users:", len(s.users))
-	for user, _ := range s.users {
-		err := websocket.JSON.Send(user.conn, msg)
-		log.Println("Broadcast message sent:", err)
-		if err != nil {
-			continue
-		}
-	}
-}
-
-func (s *Server) HandleThingMessage(msg *ThingMessage) {
+// Message handler
+func (s *Server) HandleMessage(msg *ThingMessage) {
 	var err error
 	var thing *Thing
 
+	// TODO Handle user renames
+
 	switch msg.Method {
 	case "create":
-		log.Println("Creating thing", msg.Item)
 		thing, err = s.store.Create(msg.Item)
 	case "delete":
-		log.Println("Deleting thing", msg.Item)
 		thing, err = s.store.Delete(msg.Item)
 	case "update":
-		log.Println("Updating thing", msg.Item)
 		thing, err = s.store.Update(msg.Item)
 	default:
-		log.Println("Unknown method:", msg.Method)
 		err = fmt.Errorf("Unknown method '%s'", msg.Method)
 	}
 
@@ -110,39 +127,29 @@ func (s *Server) HandleThingMessage(msg *ThingMessage) {
 	s.BroadcastMessage(&returnMsg)
 }
 
-// Serve the list template
-func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
-	list, ok := s.templates["list"]
-	if !ok {
-		http.Error(w, "Template not found", 500)
-		return
-	}
-
-	// TODO Output all things?
-	attrs := map[string]interface{}{}
-
-	list.Execute(w, attrs)
-}
-
+// Main websocket handler for users
+// Receives new events
 func (s *Server) EventsHandler(ws *websocket.Conn) {
 	// Register the new connection
 	s.counter += 1
 
 	// Create a user object and join the server
 	user := &User{Id: s.counter, conn: ws}
-	s.users[user] = true
 	log.Println("User connected:", user)
 
-	things := s.store.List()
+	s.AddUser(user)
+	defer s.DeleteUser(user)
 
+	// Send the initial state of the resource list
 	listMsg := &Message{
 		Body:    "init",
-		Content: things,
+		Content: s.store.List(),
 	}
 
 	// Send the current list
 	websocket.JSON.Send(ws, listMsg)
 
+	// Report the error that ended the main event loop
 	var err error
 
 	// Main event loop
@@ -154,15 +161,11 @@ Events:
 			break Events
 		}
 
-		log.Println("New message:", msg)
-		s.HandleThingMessage(&msg)
+		log.Printf("Message from %s: %s\n", user, msg)
+		s.HandleMessage(&msg)
 
-		// TODO What to do with various message types?
-		// s.BroadcastMessage(user, &msg)
 	}
-	log.Println("Exiting event loop:", err)
-	// TODO This could be a defer method
-	s.DeleteUser(user)
+	log.Printf("User %s exited with error %s\n", user, err)
 }
 
 func New(config Config, store Storage) (*Server, error) {
