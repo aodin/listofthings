@@ -1,0 +1,20 @@
+li > h3 {
+    margin-top:10px;
+}
+
+li span {
+    margin-left:10px;
+    cursor: pointer;
+}
+
+li span:hover {
+    text-decoration: underline;
+}
+
+ol {
+    margin-top:30px;
+}
+
+#things {
+    margin-top:30px;
+}
