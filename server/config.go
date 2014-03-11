@@ -14,7 +14,7 @@ type Config struct {
 func Parse() Config {
 	// TODO Parse a json config file contained in the flag -config
 	var config Config
-	flag.IntVar(&config.Port, "port", 8081, "port for the HTTP server")
+	flag.IntVar(&config.Port, "port", 9000, "port for the HTTP server")
 	flag.StringVar(
 		&config.Templates,
 		"templates",
