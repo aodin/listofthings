@@ -1,34 +1,39 @@
 package server
 
 import (
-	"code.google.com/p/go.net/websocket"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"path/filepath"
+
+	"code.google.com/p/go.net/websocket"
+
+	"github.com/aodin/listofthings/db"
+	"github.com/aodin/listofthings/server/config"
+	"github.com/aodin/listofthings/server/feeds/v1"
 )
 
 type User struct {
 	conn *websocket.Conn
-	Id   int64  `json:"id"`
+	ID   int64  `json:"id"`
 	Name string `json:"name"`
 }
 
 func (u *User) String() string {
 	if u.Name == "" {
-		return fmt.Sprintf("%d", u.Id)
+		return fmt.Sprintf("%d", u.ID)
 	}
-	return fmt.Sprintf("%s (%d)", u.Name, u.Id)
+	return fmt.Sprintf("%s (%d)", u.Name, u.ID)
 }
 
 // Wrap HTTP methods
 type Server struct {
-	config    Config
+	config    config.Config
 	templates map[string]*template.Template
 	users     map[*User]bool
 	counter   int64
-	store     Storage
+	store     Store
 }
 
 func (s *Server) ListenAndServe() error {
@@ -49,7 +54,7 @@ func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Broadcast method for users
-func (s *Server) BroadcastMessage(msg *Message) {
+func (s *Server) BroadcastMessage(msg *v1.Message) {
 	// Send the message to all users
 	for user, _ := range s.users {
 		err := websocket.JSON.Send(user.conn, msg)
@@ -63,7 +68,7 @@ func (s *Server) BroadcastMessage(msg *Message) {
 // -----------
 func (s *Server) AddUser(user *User) {
 	// Broadcast a user joined message to all users
-	msg := &Message{
+	msg := &v1.Message{
 		Body:    "join",
 		Content: user,
 	}
@@ -83,7 +88,7 @@ func (s *Server) DeleteUser(user *User) {
 	// Delete the user
 	delete(s.users, user)
 
-	msg := &Message{
+	msg := &v1.Message{
 		Body:    "left",
 		Content: user,
 	}
@@ -98,9 +103,9 @@ func (s *Server) DeleteUser(user *User) {
 }
 
 // Message handler
-func (s *Server) HandleMessage(msg *ThingMessage) {
+func (s *Server) HandleMessage(msg *v1.ThingMessage) {
 	var err error
-	var thing *Thing
+	var thing *db.Thing
 
 	// TODO Handle user renames
 
@@ -116,7 +121,7 @@ func (s *Server) HandleMessage(msg *ThingMessage) {
 	}
 
 	// Build the return message
-	var returnMsg Message
+	var returnMsg v1.Message
 	if err != nil {
 		returnMsg.Body = "error"
 		returnMsg.Content = err.Error()
@@ -134,7 +139,7 @@ func (s *Server) EventsHandler(ws *websocket.Conn) {
 	s.counter += 1
 
 	// Create a user object and join the server
-	user := &User{Id: s.counter, conn: ws}
+	user := &User{ID: s.counter, conn: ws}
 	log.Println("User connected:", user)
 
 	// Determine the number of current users
@@ -149,14 +154,14 @@ func (s *Server) EventsHandler(ws *websocket.Conn) {
 	defer s.DeleteUser(user)
 
 	// Send the user a list of other users
-	usersMsg := &Message{
+	usersMsg := &v1.Message{
 		Body:    "users",
 		Content: others,
 	}
 	websocket.JSON.Send(ws, usersMsg)
 
 	// Send the initial state of the resource list
-	listMsg := &Message{
+	listMsg := &v1.Message{
 		Body:    "init",
 		Content: s.store.List(),
 	}
@@ -168,7 +173,7 @@ func (s *Server) EventsHandler(ws *websocket.Conn) {
 	// Main event loop
 Events:
 	for {
-		var msg ThingMessage
+		var msg v1.ThingMessage
 		err = websocket.JSON.Receive(ws, &msg)
 		if err != nil {
 			break Events
@@ -181,7 +186,7 @@ Events:
 	log.Printf("User %s exited with error %s\n", user, err)
 }
 
-func New(config Config, store Storage) (*Server, error) {
+func New(config config.Config, store Store) (*Server, error) {
 	// Parse the templates
 	tmplPath := filepath.Join(config.Templates, "list.html")
 	tmpl, err := template.ParseFiles(tmplPath)
@@ -203,7 +208,7 @@ func New(config Config, store Storage) (*Server, error) {
 	http.Handle("/events", websocket.Handler(s.EventsHandler))
 
 	// Serve the static files
-	staticURL := "/static/"
+	staticURL := "/dist/"
 	http.Handle(
 		staticURL,
 		http.StripPrefix(staticURL, http.FileServer(http.Dir(config.Static))),

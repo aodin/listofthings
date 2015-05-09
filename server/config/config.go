@@ -1,8 +1,6 @@
-package server
+package config
 
-import (
-	"flag"
-)
+import "flag"
 
 type Config struct {
 	Port      int    `json:"port"`
@@ -14,7 +12,7 @@ type Config struct {
 func Parse() Config {
 	// TODO Parse a json config file contained in the flag -config
 	var config Config
-	flag.IntVar(&config.Port, "port", 9000, "port for the HTTP server")
+	flag.IntVar(&config.Port, "port", 9001, "port for the HTTP server")
 	flag.StringVar(
 		&config.Templates,
 		"templates",
@@ -24,7 +22,7 @@ func Parse() Config {
 	flag.StringVar(
 		&config.Static,
 		"static",
-		"./static",
+		"./dist",
 		"static directory",
 	)
 	flag.Parse()

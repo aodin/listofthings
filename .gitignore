@@ -20,3 +20,9 @@ _cgo_export.*
 _testmain.go
 
 *.exe
+gin-bin
+
+# JavaScript
+/node_modules
+/bower_components
+/dist

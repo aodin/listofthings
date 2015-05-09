@@ -4,26 +4,28 @@ import (
 	"fmt"
 	"html"
 	"sync"
-	"time"
+
+	"github.com/aodin/listofthings/db"
+	"github.com/aodin/listofthings/db/fields"
 )
 
-type Storage interface {
-	List() []*Thing
-	Create(*Thing) (*Thing, error)
-	Delete(*Thing) (*Thing, error)
-	Update(*Thing) (*Thing, error)
+type Store interface {
+	List() []*db.Thing
+	Create(*db.Thing) (*db.Thing, error)
+	Delete(*db.Thing) (*db.Thing, error)
+	Update(*db.Thing) (*db.Thing, error)
 }
 
-type Memory struct {
-	mutex  sync.Mutex
-	things []*Thing
+type InMemoryStore struct {
+	sync.Mutex
+	things []*db.Thing
 }
 
-func (m *Memory) List() []*Thing {
+func (m *InMemoryStore) List() []*db.Thing {
 	// TODO Read-writer mutex? Do we need to lock on read?
 
 	// Remove nil things
-	things := make([]*Thing, 0)
+	things := make([]*db.Thing, 0)
 	for _, thing := range m.things {
 		if thing == nil {
 			continue
@@ -35,10 +37,10 @@ func (m *Memory) List() []*Thing {
 
 // TODO Should validation be methods of the Resource or the Store?
 
-func (m *Memory) Create(thing *Thing) (*Thing, error) {
+func (m *InMemoryStore) Create(thing *db.Thing) (*db.Thing, error) {
 	// Lock the memory storage while this occurs
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	m.Lock()
+	defer m.Unlock()
 
 	// Find an open slot
 	var index int64
@@ -55,22 +57,22 @@ func (m *Memory) Create(thing *Thing) (*Thing, error) {
 	}
 
 	// Escape all items on input
-	thing.Id = index
+	thing.ID = index
 	thing.Name = html.EscapeString(thing.Name)
-	thing.Timestamp = time.Now()
+	thing.Timestamp = fields.NewTimestamp()
 
 	// Add it to the memory store
 	m.things[index-1] = thing
 	return thing, nil
 }
 
-func (m *Memory) Delete(thing *Thing) (*Thing, error) {
+func (m *InMemoryStore) Delete(thing *db.Thing) (*db.Thing, error) {
 	// Lock the memory storage while this occurs
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	m.Lock()
+	defer m.Unlock()
 
 	// Does the thing exist?
-	index := int(thing.Id)
+	index := int(thing.ID)
 	if index > len(m.things) || index < 1 {
 		return nil, fmt.Errorf("Invalid id")
 	}
@@ -85,13 +87,13 @@ func (m *Memory) Delete(thing *Thing) (*Thing, error) {
 	return thing, nil
 }
 
-func (m *Memory) Update(thing *Thing) (*Thing, error) {
+func (m *InMemoryStore) Update(thing *db.Thing) (*db.Thing, error) {
 	// Lock the memory storage while this occurs
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	m.Lock()
+	defer m.Unlock()
 
 	// Does the index make sense
-	index := int(thing.Id)
+	index := int(thing.ID)
 	if index > len(m.things) || index < 1 {
 		return nil, fmt.Errorf("Invalid id")
 	}
@@ -109,6 +111,6 @@ func (m *Memory) Update(thing *Thing) (*Thing, error) {
 	return original, nil
 }
 
-func NewMemoryStore(n int) *Memory {
-	return &Memory{things: make([]*Thing, n)}
+func NewMemoryStore(n int) *InMemoryStore {
+	return &InMemoryStore{things: make([]*db.Thing, n)}
 }
