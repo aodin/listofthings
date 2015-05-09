@@ -49,9 +49,7 @@ var ListOfThings = function() {
     },
     onmessage: function(result) {
       var data = JSON.parse(result.data);
-      if (!data) return;
-
-      console.log('Message:', data);
+      if (!data) {return;}
 
       // TODO This should be behavior of Backbone.sync
       switch (data.body) {
@@ -81,20 +79,15 @@ var ListOfThings = function() {
           this.$('#errors').prepend(new Error({message: data.content}).el);
           break;
         default:
-          console.log('unknown message from server:', data);
+          // TODO Error
       }
     },
-    onopen: function(data) {
-      console.log('Socket open');
-    },
-    onerror: function(data) {
-      console.log('Socket error');
-    },
-    onclose: function(data) {
-      console.log('Socket closed');
-    },
+    // websocket methods have default parameter: data
+    onopen: function() {},
+    onerror: function() {},
+    onclose: function() {},
     proxyEnter: function(e) {
-      if (e.keyCode == 13) this.createItem();
+      if (e.keyCode === 13) {this.createItem();}
     },
     createItem: function() {
       var $input = this.$('#create-name');
@@ -219,9 +212,10 @@ var ListOfThings = function() {
     // TODO cache errors
   };
 
-  WebsocketSync.prototype.sync = function(method, model, options) {
+  // Sync method has default paramters: method, model, options
+  WebsocketSync.prototype.sync = function(method, model) {
     // Check ready state
-    if (this.ws.readyState != 1) {
+    if (this.ws.readyState !== 1) {
       // Return after displaying an error
       $('#errors').prepend(new Error({message: 'Could not connect to server'}).el);
       return;
@@ -240,7 +234,7 @@ var ListOfThings = function() {
 
     // List needs to know the users because all socket message go through it
     var list = new List({collection: things, users: users});
-    var userList = new UserList({collection: users});
+    new UserList({collection: users});
     var ws = new WebSocket(ws_uri);
 
     // Overwrite the sync method

@@ -1,0 +1,17 @@
+{
+"browser":true,
+    "curly": true,
+    "eqeqeq": true,
+    "eqnull": true,
+    "expr": true,
+    "latedef": true,
+    "undef": true,
+    "unused": true,
+    "strict": true,
+    
+    "globals": {
+        "Backbone": false,
+        "$": false,
+        "_": false
+    }
+}
