@@ -2,18 +2,32 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/aodin/listofthings/db"
 	"github.com/aodin/listofthings/server"
-	"github.com/aodin/listofthings/server/config"
+	"github.com/aodin/volta/config"
 )
+
+var conf = config.Config{
+	Port:        9001,
+	ProxyPort:   9000,
+	TemplateDir: "./templates",
+	StaticDir:   "./dist",
+	StaticURL:   "/dist/",
+	Cookie: config.CookieConfig{
+		Age:      365 * 24 * time.Hour,
+		Domain:   "",
+		HttpOnly: false,
+		Name:     "listuserid",
+		Path:     "/",
+		Secure:   false,
+	},
+}
 
 func main() {
 	// Create a memory store with a limited number of items
 	store := server.NewMemoryStore(25)
-
-	// Create and parse the server configuration
-	config := config.Parse()
 
 	// Add a few things
 	names := []string{"Bass-o-matic", "Swill", "Jam Hawkers"}
@@ -26,14 +40,6 @@ func main() {
 	}
 
 	// Create a new server
-	srv, err := server.New(config, store)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	log.Println("Starting server on port:", config.Port)
-	err = srv.ListenAndServe()
-	if err != nil {
-		log.Panic(err)
-	}
+	log.Println("Starting server on", conf.Address())
+	log.Panic(server.New(conf, store).ListenAndServe())
 }

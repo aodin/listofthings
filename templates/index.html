@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+{{ define "index" }}<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
     <title>List of Things</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/dist/css/lib.css"> 
-    <link rel="stylesheet" href="/dist/css/app.css"> 
+    <link rel="stylesheet" href="{{ .StaticURL }}css/lib.css"> 
+    <link rel="stylesheet" href="{{ .StaticURL }}css/app.css"> 
   </head>
   <body>
 
@@ -37,7 +37,7 @@
       </div>
     </div>
 
-    <script src="/dist/js/lib.js"></script>
-    <script src="/dist/js/app.js"></script>
+    <script src="{{ .StaticURL }}js/lib.js"></script>
+    <script src="{{ .StaticURL }}js/app.js"></script>
   </body>
-</html>
+</html>{{ end }}

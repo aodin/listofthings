@@ -2,55 +2,34 @@ package server
 
 import (
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
-	"path/filepath"
 
 	"code.google.com/p/go.net/websocket"
+	"github.com/aodin/volta/config"
+	"github.com/aodin/volta/templates"
 
 	"github.com/aodin/listofthings/db"
-	"github.com/aodin/listofthings/server/config"
 	"github.com/aodin/listofthings/server/feeds/v1"
 )
-
-type User struct {
-	conn *websocket.Conn
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-}
-
-func (u *User) String() string {
-	if u.Name == "" {
-		return fmt.Sprintf("%d", u.ID)
-	}
-	return fmt.Sprintf("%s (%d)", u.Name, u.ID)
-}
 
 // Wrap HTTP methods
 type Server struct {
 	config    config.Config
-	templates map[string]*template.Template
+	templates *templates.Templates
 	users     map[*User]bool
 	counter   int64
 	store     Store
 }
 
-func (s *Server) ListenAndServe() error {
-	address := fmt.Sprintf(":%d", s.config.Port)
-	return http.ListenAndServe(address, nil)
+func (srv *Server) ListenAndServe() error {
+	return http.ListenAndServe(srv.config.Address(), nil)
 }
 
-// Serve the list template
-func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
-	list, ok := s.templates["list"]
-	if !ok {
-		http.Error(w, "Template not found", 500)
-		return
-	}
-	// TODO Bootstrap the things using JSON embeded in the template?
-	attrs := map[string]interface{}{}
-	list.Execute(w, attrs)
+// Index is the handler for the index
+func (srv *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
+	// Assign a session if one has not been set
+	srv.templates.Execute(w, "index")
 }
 
 // Broadcast method for users
@@ -186,32 +165,29 @@ Events:
 	log.Printf("User %s exited with error %s\n", user, err)
 }
 
-func New(config config.Config, store Store) (*Server, error) {
-	// Parse the templates
-	tmplPath := filepath.Join(config.Templates, "list.html")
-	tmpl, err := template.ParseFiles(tmplPath)
-	if err != nil {
-		return nil, err
+// New creates a new server. It will panic on error
+func New(config config.Config, store Store) *Server {
+	srv := &Server{
+		config: config,
+		store:  store,
+		templates: templates.New(
+			config.TemplateDir,
+			templates.Attrs{"StaticURL": config.StaticURL},
+		),
 	}
-	templates := map[string]*template.Template{"list": tmpl}
-
-	// Build the server
-	s := &Server{config: config, templates: templates, store: store}
 
 	// Make the user dictionary
-	s.users = make(map[*User]bool)
+	srv.users = make(map[*User]bool)
 
-	// Bind the root HTTP hander
-	http.HandleFunc("/", s.RootHandler)
-
-	// And the websocket handler
-	http.Handle("/events", websocket.Handler(s.EventsHandler))
-
-	// Serve the static files
-	staticURL := "/dist/"
+	// Routes
+	http.HandleFunc("/", srv.IndexHandler)
+	http.Handle("/events", websocket.Handler(srv.EventsHandler))
 	http.Handle(
-		staticURL,
-		http.StripPrefix(staticURL, http.FileServer(http.Dir(config.Static))),
+		config.StaticURL,
+		http.StripPrefix(
+			config.StaticURL,
+			http.FileServer(http.Dir(config.StaticDir)),
+		),
 	)
-	return s, nil
+	return srv
 }
