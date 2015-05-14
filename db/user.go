@@ -8,14 +8,14 @@ import (
 )
 
 type User struct {
-	ID    fields.ID    `json:"id,omitempty"`
-	Email fields.Email `json:"email"`
-	Name  fields.Name  `json:"name"`
+	ID    int64  `db:"id,omitempty" json:"id,omitempty"`
+	Email string `db:"email" json:"email"`
+	Name  string `db:"name" json:"name"`
 	fields.Timestamp
 }
 
 func (user User) Exists() bool {
-	return user.ID.Exists()
+	return user.ID != 0
 }
 
 func (user User) String() string {
@@ -23,6 +23,10 @@ func (user User) String() string {
 		return "Anonymous User"
 	}
 	return string(user.Name)
+}
+
+func NewUser(name, email string) User {
+	return User{Name: name, Email: email}
 }
 
 var Users = sql.Table("users",

@@ -5,61 +5,77 @@ import (
 	"encoding/base64"
 	"io"
 	"log"
-	"sync"
 	"time"
 
+	sql "github.com/aodin/aspect"
 	"github.com/aodin/volta/config"
+
+	db "github.com/aodin/listofthings/db"
 )
 
-// SessionManager is an in-memory store of sessions
+// TODO Check session expiration
+
 type SessionManager struct {
-	sync.RWMutex
-	sessions map[string]Session
-	cookie   config.CookieConfig
-	keyGen   func() string
+	conn   sql.Connection
+	cookie config.CookieConfig
+	keyGen func() string
 }
 
 // Create creates a new session with a random key
-func (m *SessionManager) Create() Session {
-	return m.create(time.Now().UTC())
+func (m *SessionManager) Create(user db.User) db.Session {
+	return m.create(time.Now().UTC(), user)
 }
 
-func (m *SessionManager) create(now time.Time) (session Session) {
-	m.Lock()
-	defer m.Unlock()
-
+func (m *SessionManager) create(now time.Time, user db.User) (session db.Session) {
 	// Set the expires from the cookie config
-	session = Session{
-		Expires: now.Add(m.cookie.Age),
-	}
+	session.UserID = user.ID
+	session.Expires = now.Add(m.cookie.Age)
+
+	// TODO Single transaction
 
 	// Generate a new random session key
 	for {
 		session.Key = m.keyGen()
-		if _, exists := m.sessions[session.Key]; !exists {
+
+		// No duplicates - generate a new key if this key already exists
+		var duplicate string
+		stmt := sql.Select(
+			db.Sessions.C["key"],
+		).Where(db.Sessions.C["key"].Equals(session.Key)).Limit(1)
+		if !m.conn.MustQueryOne(stmt, &duplicate) {
 			break
 		}
 	}
 
-	m.sessions[session.Key] = session
+	// Insert the session
+	m.conn.MustExecute(db.Sessions.Insert().Values(session))
+	return session
+}
+
+func (m *SessionManager) Get(key string) (session db.Session) {
+	stmt := db.Sessions.Select().Where(db.Sessions.C["key"].Equals(key))
+	m.conn.MustQueryOne(stmt, &session)
 	return
 }
 
-func (m *SessionManager) Get(key string) Session {
-	m.RLock()
-	defer m.RUnlock()
-	return m.sessions[key]
+func (m *SessionManager) GetUser(key string) (user db.User) {
+	stmt := db.Users.Select().JoinOn(
+		db.Sessions,
+		db.Sessions.C["user_id"].Equals(db.Users.C["id"]),
+	).Where(
+		db.Sessions.C["key"].Equals(key),
+	).Limit(1)
+	m.conn.MustQueryOne(stmt, &user)
+	return
 }
 
-// Session creates a key with an optional user
-type Session struct {
-	Key     string
-	UserID  int64
-	Expires time.Time
-}
-
-func (session Session) Exists() bool {
-	return session.Key != ""
+// Sessions creates a new session manager
+func Sessions(conf config.Config, conn sql.Connection) *SessionManager {
+	return &SessionManager{
+		conn:   conn,
+		cookie: conf.Cookie,
+		keyGen: RandomKey,
+	}
 }
 
 // EncodeBase64String is a wrapper around the standard base64 encoding call.
@@ -87,13 +103,4 @@ func RandomKey() string {
 // of the random bytes, not the final encoded string.
 func RandomKeyN(n int) string {
 	return EncodeBase64String(RandomBytes(n))
-}
-
-// Sessions creates a new session manager
-func Sessions(conf config.Config) *SessionManager {
-	return &SessionManager{
-		cookie:   conf.Cookie,
-		sessions: make(map[string]Session),
-		keyGen:   RandomKey,
-	}
 }

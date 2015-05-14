@@ -4,9 +4,11 @@ import (
 	"net/http"
 
 	"github.com/aodin/volta/config"
+
+	db "github.com/aodin/listofthings/db"
 )
 
-func SetCookie(w http.ResponseWriter, c config.CookieConfig, session Session) {
+func SetCookie(w http.ResponseWriter, c config.CookieConfig, session db.Session) {
 	cookie := &http.Cookie{
 		Name:     c.Name,
 		Value:    session.Key,

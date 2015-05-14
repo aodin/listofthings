@@ -8,6 +8,7 @@ import (
 	"github.com/aodin/volta/config"
 	"github.com/aodin/volta/templates"
 
+	db "github.com/aodin/listofthings/db"
 	"github.com/aodin/listofthings/server/auth"
 	feeds "github.com/aodin/listofthings/server/feeds/v1"
 )
@@ -20,14 +21,21 @@ type Server struct {
 	users     *auth.UserManager
 }
 
+// TODO auth function?
 func (srv *Server) RequireSession(f http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, err := r.Cookie(srv.config.Cookie.Name)
-		if err != nil {
-			auth.SetCookie(w, srv.config.Cookie, srv.sessions.Create())
-		} else {
-			// TODO If the cookie value is invalid, reset it
+		var session db.Session
+		if cookie, err := r.Cookie(srv.config.Cookie.Name); err == nil {
+			session = srv.sessions.Get(cookie.Value)
 		}
+
+		// If the cookie value is invalid, create a new user and session
+		if !session.Exists() {
+			user := srv.users.Create("", "")
+			auth.SetCookie(w, srv.config.Cookie, srv.sessions.Create(user))
+		}
+
+		// Call the wrapped handler
 		f(w, r)
 	}
 }
@@ -46,12 +54,12 @@ func (srv *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
 func New(config config.Config, conn sql.Connection) *Server {
 	srv := &Server{
 		config:   config,
-		sessions: auth.Sessions(config),
+		sessions: auth.Sessions(config, conn),
 		templates: templates.New(
 			config.TemplateDir,
 			templates.Attrs{"StaticURL": config.StaticURL},
 		),
-		users: auth.Users(),
+		users: auth.Users(conn),
 	}
 
 	// Routes

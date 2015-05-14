@@ -1,39 +1,32 @@
 package auth
 
 import (
-	"fmt"
-	"sync"
+	sql "github.com/aodin/aspect"
+	pg "github.com/aodin/aspect/postgres"
+
+	db "github.com/aodin/listofthings/db"
 )
 
 type UserManager struct {
-	sync.RWMutex
-	users map[int64]User
+	conn sql.Connection
 }
 
-func (m *UserManager) Get(id int64) User {
-	m.Lock()
-	defer m.Unlock()
-	return m.users[id]
+func (m *UserManager) Create(name, email string) db.User {
+	// TODO prevent duplicate emails
+	user := db.NewUser(name, email)
+	stmt := pg.Insert(db.Users).Values(user).Returning(db.Users)
+	m.conn.MustQueryOne(stmt, &user)
+	return user
 }
 
-func Users() *UserManager {
+func (m *UserManager) Get(id int64) (user db.User) {
+	stmt := db.Users.Select().Where(db.Users.C["id"].Equals(id))
+	m.conn.MustQueryOne(stmt, &user)
+	return
+}
+
+func Users(conn sql.Connection) *UserManager {
 	return &UserManager{
-		users: make(map[int64]User),
+		conn: conn,
 	}
-}
-
-type User struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-}
-
-func (user User) Exists() bool {
-	return user.ID != 0
-}
-
-func (user User) String() string {
-	if user.Name == "" {
-		return fmt.Sprintf("%d", user.ID)
-	}
-	return fmt.Sprintf("%s (%d)", user.Name, user.ID)
 }

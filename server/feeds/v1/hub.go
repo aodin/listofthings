@@ -1,72 +1,82 @@
 package v1
 
 import (
+	"fmt"
 	"log"
 	"sync"
 
 	"code.google.com/p/go.net/websocket"
 
+	db "github.com/aodin/listofthings/db"
 	"github.com/aodin/listofthings/server/auth"
 )
+
+type Connection struct {
+	db.User
+	key string // Session key
+	ws  *websocket.Conn
+}
+
+func (c Connection) String() string {
+	return fmt.Sprintf("%s (id: %d)", c.User, c.User.ID)
+	// return fmt.Sprintf("%s (id: %d, key: %s)", c.User, c.User.ID, c.key)
+}
 
 // Hub matches session keys to connections
 type Hub struct {
 	sync.RWMutex
 	users       *auth.UserManager
 	sessions    *auth.SessionManager
-	connections map[string]*websocket.Conn
+	connections map[string]Connection
 }
 
 // Broadcast sends a message to all users
 func (hub *Hub) Broadcast(msg Message) {
-	for _, connection := range hub.connections {
+	for _, user := range hub.connections {
 		// TODO error ignored
-		_ = websocket.JSON.Send(connection, msg)
+		_ = websocket.JSON.Send(user.ws, msg)
 	}
 }
 
-func (hub *Hub) Join(session auth.Session, ws *websocket.Conn) {
-	// Get the user if it exists
-	var user auth.User
-	if session.UserID != 0 {
-		user = hub.users.Get(session.UserID)
-	}
-
-	if !user.Exists() {
-		// Create a anonymous user
-		user = auth.User{Name: "Anonymous User"}
-	}
-
+func (hub *Hub) Join(connection Connection) {
+	// Log and broadcast the event
+	log.Printf("%s joined\n", connection)
 	msg := EventMessage{
 		Resource: "users",
 		Event:    CREATE,
+		Content:  connection.User,
 	}
 	hub.Broadcast(msg)
+
+	// Add the connection to the hub
 	hub.Lock()
 	defer hub.Unlock()
-	hub.connections[session.Key] = ws
+	hub.connections[connection.key] = connection
 }
 
-func (hub *Hub) Leave(session auth.Session) {
+func (hub *Hub) Leave(connection Connection) {
+	// Remove the connection from the hub
 	hub.Lock()
-	defer hub.Unlock()
-	delete(hub.connections, session.Key)
+	delete(hub.connections, connection.key)
+	hub.Unlock()
 
+	// Log and broadcast the event
+	log.Printf("%s left\n", connection)
 	msg := EventMessage{
 		Resource: "users",
 		Event:    DELETE,
-		Content:  hub.users.Get(session.UserID),
+		Content:  connection.User,
 	}
 	hub.Broadcast(msg)
 }
 
-func (hub *Hub) Users() []auth.User {
+func (hub *Hub) Users() []db.User {
 	// This list will include the requesting user
-	users := make([]auth.User, len(hub.connections))
+	// TODO Does order matter?
+	users := make([]db.User, len(hub.connections))
 	var i int
-	for _, _ = range hub.connections {
-		// TODO Match users
-		users[i] = auth.User{Name: "Anonymous User"}
+	for _, connection := range hub.connections {
+		users[i] = connection.User
 		i += 1
 	}
 	return users
@@ -111,15 +121,22 @@ func (hub *Hub) Handler(ws *websocket.Conn) {
 		return
 	}
 
-	// Create a connection with the session
-	session := hub.sessions.Get(connect.SessionKey)
-	if !session.Exists() {
+	// Create a hub user from the session key
+	user := hub.sessions.GetUser(connect.SessionKey)
+	if !user.Exists() {
 		// TODO Force an expiration in session? Create a new session?
-		log.Printf("Session does not exist: %s", connect.SessionKey)
+		log.Printf("No user with session: %s", connect.SessionKey)
 		return
 	}
 
-	hub.Join(session, ws)
+	// Wrap the user, session key, and websocket together
+	connection := Connection{
+		User: user,
+		key:  connect.SessionKey,
+		ws:   ws,
+	}
+
+	hub.Join(connection)
 
 	// Send the initial state of the users list
 	msg := EventMessage{
@@ -141,8 +158,7 @@ Events:
 		// s.HandleMessage(&msg)
 	}
 
-	hub.Leave(session)
-	log.Printf("Session %s exited\n", session.Key)
+	hub.Leave(connection)
 }
 
 func NewHub(users *auth.UserManager, sessions *auth.SessionManager) *Hub {
@@ -162,7 +178,7 @@ func NewHub(users *auth.UserManager, sessions *auth.SessionManager) *Hub {
 	// http.Handle("/events", websocket.Handler(srv.EventsHandler))
 
 	return &Hub{
-		connections: make(map[string]*websocket.Conn),
+		connections: make(map[string]Connection),
 		users:       users,
 		sessions:    sessions,
 	}
