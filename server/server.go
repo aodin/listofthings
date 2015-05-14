@@ -3,11 +3,12 @@ package server
 import (
 	"net/http"
 
+	"code.google.com/p/go.net/websocket"
 	"github.com/aodin/volta/config"
 	"github.com/aodin/volta/templates"
 
 	"github.com/aodin/listofthings/server/auth"
-	// "github.com/aodin/listofthings/server/feeds/v1"
+	feeds "github.com/aodin/listofthings/server/feeds/v1"
 )
 
 // Wrap HTTP methods
@@ -54,6 +55,12 @@ func New(config config.Config) *Server {
 
 	// Routes
 	http.HandleFunc("/", srv.RequireSession(srv.IndexHandler))
+
+	// Feeds
+	hub := feeds.NewHub(srv.users, srv.sessions)
+	http.Handle("/feeds/v1/things", websocket.Handler(hub.Handler))
+
+	// Static Files
 	http.Handle(
 		config.StaticURL,
 		http.StripPrefix(

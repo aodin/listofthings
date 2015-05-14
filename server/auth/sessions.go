@@ -54,7 +54,7 @@ func (m *SessionManager) Get(key string) Session {
 // Session creates a key with an optional user
 type Session struct {
 	Key     string
-	UserID  *int64
+	UserID  int64
 	Expires time.Time
 }
 

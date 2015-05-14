@@ -1,87 +1,78 @@
 package v1
 
-// import (
-// 	"code.google.com/p/go.net/websocket"
+import (
+	"log"
+	"sync"
 
-// 	"github.com/aodin/listofthings/server/auth"
-// )
+	"code.google.com/p/go.net/websocket"
 
-// // Hub matches session keys to connections
-// type Hub struct {
-// 	users       *auth.UserManager
-// 	sessions    *auth.SessionManager
-// 	connections map[string]*websocket.Conn
-// }
+	"github.com/aodin/listofthings/server/auth"
+)
 
-// func NewHub(users *auth.UserManager, sessions *auth.SessionManager) *Hub {
-// 	// Create a memory store with a limited number of items
-// 	store := NewMemoryStore(25)
+// Hub matches session keys to connections
+type Hub struct {
+	sync.RWMutex
+	users       *auth.UserManager
+	sessions    *auth.SessionManager
+	connections map[string]*websocket.Conn
+}
 
-// 	// Add a few things
-// 	names := []string{"Bass-o-matic", "Swill", "Jam Hawkers"}
+// Broadcast sends a message to all users
+func (hub *Hub) Broadcast(msg Message) {
+	for _, connection := range hub.connections {
+		// TODO error ignored
+		_ = websocket.JSON.Send(connection, msg)
+	}
+}
 
-// 	for _, name := range names {
-// 		thing := db.NewThing(name)
-// 		if _, err := store.Create(&thing); err != nil {
-// 			log.Panic(err)
-// 		}
-// 	}
+func (hub *Hub) Join(session auth.Session, ws *websocket.Conn) {
+	// Get the user if it exists
+	var user auth.User
+	if session.UserID != 0 {
+		user = hub.users.Get(session.UserID)
+	}
 
-// 	http.Handle("/events", websocket.Handler(srv.EventsHandler))
+	if !user.Exists() {
+		// Create a anonymous user
+		user = auth.User{Name: "Anonymous User"}
+	}
 
-// }
+	msg := EventMessage{
+		Resource: "users",
+		Event:    CREATE,
+	}
+	hub.Broadcast(msg)
+	hub.Lock()
+	defer hub.Unlock()
+	hub.connections[session.Key] = ws
+}
 
-// // Broadcast method for users
-// func (s *Server) BroadcastMessage(msg *v1.Message) {
-// 	// Send the message to all users
-// 	for user, _ := range s.users {
-// 		err := websocket.JSON.Send(user.conn, msg)
-// 		if err != nil {
-// 			continue
-// 		}
-// 	}
-// }
+func (hub *Hub) Leave(session auth.Session) {
+	hub.Lock()
+	defer hub.Unlock()
+	delete(hub.connections, session.Key)
 
-// // User Events
-// // -----------
-// func (s *Server) AddUser(user *User) {
-// 	// Broadcast a user joined message to all users
-// 	msg := &v1.Message{
-// 		Body:    "join",
-// 		Content: user,
-// 	}
+	msg := EventMessage{
+		Resource: "users",
+		Event:    DELETE,
+		Content:  hub.users.Get(session.UserID),
+	}
+	hub.Broadcast(msg)
+}
 
-// 	for user, _ := range s.users {
-// 		err := websocket.JSON.Send(user.conn, msg)
-// 		if err != nil {
-// 			continue
-// 		}
-// 	}
+func (hub *Hub) Users() []auth.User {
+	// This list will include the requesting user
+	users := make([]auth.User, len(hub.connections))
+	var i int
+	for _, _ = range hub.connections {
+		// TODO Match users
+		users[i] = auth.User{Name: "Anonymous User"}
+		i += 1
+	}
+	return users
+}
 
-// 	// Add the user afterwards
-// 	s.users[user] = true
-// }
-
-// func (s *Server) DeleteUser(user *User) {
-// 	// Delete the user
-// 	delete(s.users, user)
-
-// 	msg := &v1.Message{
-// 		Body:    "left",
-// 		Content: user,
-// 	}
-
-// 	// Send the remaining users a user left message
-// 	for user, _ := range s.users {
-// 		err := websocket.JSON.Send(user.conn, msg)
-// 		if err != nil {
-// 			continue
-// 		}
-// 	}
-// }
-
-// // Message handler
-// func (s *Server) HandleMessage(msg *v1.ThingMessage) {
+// func (hub *Hub) Handler() {
 // 	var err error
 // 	var thing *db.Thing
 
@@ -110,56 +101,69 @@ package v1
 // 	s.BroadcastMessage(&returnMsg)
 // }
 
-// // Main websocket handler for users
-// // Receives new events
-// func (s *Server) EventsHandler(ws *websocket.Conn) {
-// 	// Register the new connection
-// 	s.counter += 1
+// Handler is the main websocket handler for users
+func (hub *Hub) Handler(ws *websocket.Conn) {
+	// Wait for the connect message
+	var connect ConnectMessage
+	if err := websocket.JSON.Receive(ws, &connect); err != nil {
+		// Exit early
+		log.Println("Failed to connect:", err)
+		return
+	}
 
-// 	// Create a user object and join the server
-// 	user := &User{ID: s.counter, conn: ws}
-// 	log.Println("User connected:", user)
+	// Create a connection with the session
+	session := hub.sessions.Get(connect.SessionKey)
+	if !session.Exists() {
+		// TODO Force an expiration in session? Create a new session?
+		log.Printf("Session does not exist: %s", connect.SessionKey)
+		return
+	}
 
-// 	// Determine the number of current users
-// 	others := make([]*User, len(s.users))
-// 	var userIndex int
-// 	for user, _ := range s.users {
-// 		others[userIndex] = user
-// 		userIndex += 1
-// 	}
+	hub.Join(session, ws)
 
-// 	s.AddUser(user)
-// 	defer s.DeleteUser(user)
+	// Send the initial state of the users list
+	msg := EventMessage{
+		Resource: "users",
+		Event:    LIST,
+		Content:  hub.Users(),
+	}
+	websocket.JSON.Send(ws, msg)
 
-// 	// Send the user a list of other users
-// 	usersMsg := &v1.Message{
-// 		Body:    "users",
-// 		Content: others,
-// 	}
-// 	websocket.JSON.Send(ws, usersMsg)
+	// Send the initial state of the data
 
-// 	// Send the initial state of the resource list
-// 	listMsg := &v1.Message{
-// 		Body:    "init",
-// 		Content: s.store.List(),
-// 	}
-// 	websocket.JSON.Send(ws, listMsg)
+	// Main event loop
+Events:
+	for {
+		var event EventMessage
+		if err := websocket.JSON.Receive(ws, &event); err != nil {
+			break Events
+		}
+		// s.HandleMessage(&msg)
+	}
 
-// 	// Report the error that ended the main event loop
-// 	var err error
+	hub.Leave(session)
+	log.Printf("Session %s exited\n", session.Key)
+}
 
-// 	// Main event loop
-// Events:
-// 	for {
-// 		var msg v1.ThingMessage
-// 		err = websocket.JSON.Receive(ws, &msg)
-// 		if err != nil {
-// 			break Events
-// 		}
+func NewHub(users *auth.UserManager, sessions *auth.SessionManager) *Hub {
+	// Create a memory store with a limited number of items
+	// store := NewMemoryStore(25)
 
-// 		log.Printf("Message from %s: %s\n", user, msg)
-// 		s.HandleMessage(&msg)
+	// // Add a few things
+	// names := []string{"Bass-o-matic", "Swill", "Jam Hawkers"}
 
-// 	}
-// 	log.Printf("User %s exited with error %s\n", user, err)
-// }
+	// for _, name := range names {
+	// 	thing := db.NewThing(name)
+	// 	if _, err := store.Create(&thing); err != nil {
+	// 		log.Panic(err)
+	// 	}
+	// }
+
+	// http.Handle("/events", websocket.Handler(srv.EventsHandler))
+
+	return &Hub{
+		connections: make(map[string]*websocket.Conn),
+		users:       users,
+		sessions:    sessions,
+	}
+}

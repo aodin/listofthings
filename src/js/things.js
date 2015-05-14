@@ -15,6 +15,81 @@ var ListOfThings = function() {
     '#d6d67e', // Ugly yellow
   ];
 
+  var SESSION_ID = 'listuserid';
+  var WEBSOCKET_URI = 'ws://' + document.URL.split('/', 3)[2] + '/feeds/v1/things';
+
+  var App = Backbone.View.extend({
+    el: '#main',
+    initialize: function(options) {
+      // Save the users
+
+      // Create a new websocket
+      this.ws = new WebSocket(WEBSOCKET_URI);
+      this.ws.onopen = this.join.bind(this);
+      this.ws.onmessage = this.onMessage.bind(this);
+      this.ws.onerror = this.onError.bind(this);
+      this.ws.onclose = this.leave.bind(this);
+    },
+    getCookies: function() {
+      var c = document.cookie, v = 0, cookies = {};
+      if (document.cookie.match(/^\s*\$Version=(?:"1"|1);\s*(.*)/)) {
+        c = RegExp.$1;
+        v = 1;
+      }
+      if (v === 0) {
+        c.split(/[,;]/).map(function(cookie) {
+          var parts = cookie.split(/=/, 2),
+            name = decodeURIComponent(parts[0].trimLeft()),
+            value = parts.length > 1 ? decodeURIComponent(parts[1].trimRight()) : null;
+          cookies[name] = value;
+        });
+      } else {
+        c.match(/(?:^|\s+)([!#$%&'*+\-.0-9A-Z^`a-z|~]+)=([!#$%&'*+\-.0-9A-Z^`a-z|~]*|"(?:[\x20-\x7E\x80\xFF]|\\[\x00-\x7F])*")(?=\s*[,;]|$)/g).map(function($0, $1) {
+          var name = $0,
+              value = $1.charAt(0) === '"' ? $1.substr(1, -1).replace(/\\(.)/g, "$1") : $1;
+          cookies[name] = value;
+        });
+      }
+      return cookies;
+    },
+    getCookie: function(name) {
+      return this.getCookies()[name];
+    },
+    join: function() {
+      this.ws.send(JSON.stringify({session: this.getCookie(SESSION_ID)}));
+    },
+    onMessage: function(msg) {
+      console.log('new message:', msg);
+    },
+    onError: function(err) {},
+    leave: function() {},
+    sync: function(method, model) {
+      // Check ready state
+      console.log('sync:', method, model, model.toJSON(), this.ws.readyState);
+      if (this.ws.readyState !== 1) {
+        // Return after displaying an error
+        $('#errors').prepend(new Error({message: 'Could not connect to server'}).el);
+        return;
+      }
+
+      var msg = {
+        method: method,
+        content: model.toJSON()
+      };
+      this.ws.send(JSON.stringify(msg));
+    }
+  });
+
+  var module = {};
+  module.onready = function() {
+    // App needs to know both users and the collection because all socket
+    // messages go through it
+    var app = new App({collection: new Things(), users: new Users()});
+
+    // Bind to the app's sync
+    Backbone.sync = app.sync.bind(app);
+  };
+
   // Self-deleting error messages
   var Error = Backbone.View.extend({
     tagName: 'li',
@@ -170,14 +245,17 @@ var ListOfThings = function() {
     }
   });
 
-  var User = Backbone.Model.extend({});
+  var User = Backbone.Model.extend({urlRoot: 'users'});
   var Users = Backbone.Collection.extend({
-    model: User
+    model: User,
+    url: 'users',
+    initialize: function() {},
   });
 
-  var Thing = Backbone.Model.extend({});
+  var Thing = Backbone.Model.extend({urlRoot: 'things'});
   var Things = Backbone.Collection.extend({
     model: Thing,
+    url: 'things',
     comparator: function(m) {
       return m.get('timestamp');
     }
@@ -207,49 +285,8 @@ var ListOfThings = function() {
     },
   });
 
-  var WebsocketSync = function(ws) {
-    this.ws = ws;
-    // TODO cache errors
-  };
-
-  // Sync method has default paramters: method, model, options
-  WebsocketSync.prototype.sync = function(method, model) {
-    // Check ready state
-    if (this.ws.readyState !== 1) {
-      // Return after displaying an error
-      $('#errors').prepend(new Error({message: 'Could not connect to server'}).el);
-      return;
-    }
-    this.ws.send(JSON.stringify({method: method, content: model.toJSON()}));
-  };
-
-  var ws_uri = 'ws://' + document.URL.split('/', 3)[2] + '/events';
-
-  var app = {};
-
-  app.init = function() {
-    var things = new Things();
-    // Add self as a fake user
-    var users = new Users([{id: 0}]);
-
-    // List needs to know the users because all socket message go through it
-    var list = new List({collection: things, users: users});
-    new UserList({collection: users});
-    var ws = new WebSocket(ws_uri);
-
-    // Overwrite the sync method
-    var sync = new WebsocketSync(ws);
-    Backbone.sync = sync.sync.bind(sync);
-
-    // TODO Better event handler
-    // TODO Pass everything through sync
-    ws.onopen = list.onopen;
-    ws.onmessage = list.onmessage;
-    ws.onerror = list.onerror;
-    ws.onclose = list.onclose;
-  };
-  return app;
+  return module;
 }();
 
 // Initialize on DOM ready
-$(ListOfThings.init);
+$(ListOfThings.onready);

@@ -1,0 +1,10 @@
+package v1
+
+const (
+	CREATE = "CREATE"
+	UPDATE = "UPDATE"
+	DELETE = "DELETE"
+	LIST   = "LIST"
+)
+
+// TODO CONNECT and DISCONNECT?
