@@ -3,6 +3,9 @@ package db
 import (
 	"fmt"
 
+	sql "github.com/aodin/aspect"
+	pg "github.com/aodin/aspect/postgres"
+
 	"github.com/aodin/listofthings/db/fields"
 )
 
@@ -35,3 +38,12 @@ func (t Thing) Error() error {
 func NewThing(name string) Thing {
 	return Thing{Name: name}
 }
+
+var Things = sql.Table("things",
+	sql.Column("id", pg.Serial{NotNull: true}),
+	sql.Column("content", pg.JSON{NotNull: true}),
+	sql.Column("created_at", sql.Timestamp{NotNull: true, Default: pg.Now}),
+	sql.Column("updated_at", sql.Timestamp{}),
+	sql.Column("deleted_at", sql.Timestamp{}),
+	sql.PrimaryKey("id"),
+)

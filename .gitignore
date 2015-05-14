@@ -26,3 +26,7 @@ gin-bin
 /node_modules
 /bower_components
 /dist
+
+# Settings
+dbconf.yml
+settings.json

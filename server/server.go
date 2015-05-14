@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"code.google.com/p/go.net/websocket"
+	sql "github.com/aodin/aspect"
 	"github.com/aodin/volta/config"
 	"github.com/aodin/volta/templates"
 
@@ -42,7 +43,7 @@ func (srv *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // New creates a new server. It will panic on error
-func New(config config.Config) *Server {
+func New(config config.Config, conn sql.Connection) *Server {
 	srv := &Server{
 		config:   config,
 		sessions: auth.Sessions(config),

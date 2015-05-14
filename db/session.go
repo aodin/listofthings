@@ -4,7 +4,6 @@ import (
 	"time"
 
 	sql "github.com/aodin/aspect"
-	pg "github.com/aodin/aspect/postgres"
 )
 
 type Session struct {
