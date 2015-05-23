@@ -83,34 +83,34 @@ func (hub *Hub) Users() []db.User {
 	return users
 }
 
-// func (hub *Hub) Handler() {
-// 	var err error
-// 	var thing *db.Thing
+func (hub *Hub) HandleMessage(event EventMessage) {
+	// var err error
+	// var thing *db.Thing
 
-// 	// TODO Handle user renames
+	// // TODO Handle user renames
 
-// 	switch msg.Method {
-// 	case "create":
-// 		thing, err = s.store.Create(msg.Item)
-// 	case "delete":
-// 		thing, err = s.store.Delete(msg.Item)
-// 	case "update":
-// 		thing, err = s.store.Update(msg.Item)
-// 	default:
-// 		err = fmt.Errorf("Unknown method '%s'", msg.Method)
-// 	}
+	// switch msg.Method {
+	// case "create":
+	// 	thing, err = s.store.Create(msg.Item)
+	// case "delete":
+	// 	thing, err = s.store.Delete(msg.Item)
+	// case "update":
+	// 	thing, err = s.store.Update(msg.Item)
+	// default:
+	// 	err = fmt.Errorf("Unknown method '%s'", msg.Method)
+	// }
 
-// 	// Build the return message
-// 	var returnMsg v1.Message
-// 	if err != nil {
-// 		returnMsg.Body = "error"
-// 		returnMsg.Content = err.Error()
-// 	} else {
-// 		returnMsg.Body = msg.Method
-// 		returnMsg.Content = thing
-// 	}
-// 	s.BroadcastMessage(&returnMsg)
-// }
+	// // Build the return message
+	// var returnMsg v1.Message
+	// if err != nil {
+	// 	returnMsg.Body = "error"
+	// 	returnMsg.Content = err.Error()
+	// } else {
+	// 	returnMsg.Body = msg.Method
+	// 	returnMsg.Content = thing
+	// }
+	// s.BroadcastMessage(&returnMsg)
+}
 
 // Handler is the main websocket handler for users
 func (hub *Hub) Handler(ws *websocket.Conn) {
@@ -138,6 +138,12 @@ func (hub *Hub) Handler(ws *websocket.Conn) {
 	websocket.JSON.Send(ws, msg)
 
 	// Send the initial state of the data
+	msg = EventMessage{
+		Resource: "things",
+		Event:    LIST,
+		Content:  []db.Thing{{Name: "Hello"}},
+	}
+	websocket.JSON.Send(ws, msg)
 
 	// Main event loop
 Events:
@@ -146,7 +152,7 @@ Events:
 		if err := websocket.JSON.Receive(ws, &event); err != nil {
 			break Events
 		}
-		// s.HandleMessage(&msg)
+		hub.HandleMessage(event)
 	}
 
 	hub.Leave(conn)

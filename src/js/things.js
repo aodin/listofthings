@@ -15,60 +15,60 @@ var ListOfThings = function() {
     '#d6d67e', // Ugly yellow
   ];
 
-  var SESSION_ID = 'listuserid';
   var WEBSOCKET_URI = 'ws://' + document.URL.split('/', 3)[2] + '/feeds/v1/things';
 
   var App = Backbone.View.extend({
     el: '#main',
     initialize: function(options) {
-      // Save the users
+      // Attach the user and thing collections
+      this.users = options.users;
+      this.things = options.things;
+
+      // Create views that listen
+      // TODO pass the errors handler to each list
+      new UserList({collection: this.users});
+      new ThingsList({collection: this.things});
+
+      // Cache DOM elements
+      this.$errors = $('errors');
 
       // Create a new websocket
       this.ws = new WebSocket(WEBSOCKET_URI);
-      this.ws.onopen = this.join.bind(this);
+      // this.ws.onopen = this.join.bind(this);
       this.ws.onmessage = this.onMessage.bind(this);
       this.ws.onerror = this.onError.bind(this);
       this.ws.onclose = this.leave.bind(this);
     },
-    getCookies: function() {
-      var c = document.cookie, v = 0, cookies = {};
-      if (document.cookie.match(/^\s*\$Version=(?:"1"|1);\s*(.*)/)) {
-        c = RegExp.$1;
-        v = 1;
-      }
-      if (v === 0) {
-        c.split(/[,;]/).map(function(cookie) {
-          var parts = cookie.split(/=/, 2),
-            name = decodeURIComponent(parts[0].trimLeft()),
-            value = parts.length > 1 ? decodeURIComponent(parts[1].trimRight()) : null;
-          cookies[name] = value;
-        });
-      } else {
-        c.match(/(?:^|\s+)([!#$%&'*+\-.0-9A-Z^`a-z|~]+)=([!#$%&'*+\-.0-9A-Z^`a-z|~]*|"(?:[\x20-\x7E\x80\xFF]|\\[\x00-\x7F])*")(?=\s*[,;]|$)/g).map(function($0, $1) {
-          var name = $0,
-              value = $1.charAt(0) === '"' ? $1.substr(1, -1).replace(/\\(.)/g, "$1") : $1;
-          cookies[name] = value;
-        });
-      }
-      return cookies;
-    },
-    getCookie: function(name) {
-      return this.getCookies()[name];
-    },
-    join: function() {
-      this.ws.send(JSON.stringify({session: this.getCookie(SESSION_ID)}));
-    },
     onMessage: function(msg) {
-      console.log('new message:', msg);
+      // Translate the message as JSON
+      var payload = JSON.parse(msg.data);
+
+      // TODO common/whitelist store of resources
+      this.handleEvent(this[payload.resource], payload.method, payload.content);
     },
-    onError: function(err) {},
+    handleEvent: function(collection, method, content) {
+      switch (method) {
+        case 'LIST':
+          collection.reset(content);
+          break;
+        case 'CREATE':
+          collection.add(content);
+          break;
+        case 'DELETE':
+          collection.remove(content);
+          break;
+        case 'UPDATE':
+          collection.add(content, {merge: true});
+          break;
+      }
+    },
+    onError: function() {},
     leave: function() {},
     sync: function(method, model) {
       // Check ready state
-      console.log('sync:', method, model, model.toJSON(), this.ws.readyState);
       if (this.ws.readyState !== 1) {
         // Return after displaying an error
-        $('#errors').prepend(new Error({message: 'Could not connect to server'}).el);
+        this.$error.prepend(new Error({message: 'Could not connect to server'}).el);
         return;
       }
 
@@ -84,7 +84,7 @@ var ListOfThings = function() {
   module.onready = function() {
     // App needs to know both users and the collection because all socket
     // messages go through it
-    var app = new App({collection: new Things(), users: new Users()});
+    var app = new App({things: new Things(), users: new Users()});
 
     // Bind to the app's sync
     Backbone.sync = app.sync.bind(app);
@@ -110,57 +110,16 @@ var ListOfThings = function() {
     }
   });
 
-  var List = Backbone.View.extend({
+  var ThingsList = Backbone.View.extend({
     el: '#things',
     events: {
       'keyup #create-name': 'proxyEnter',
       'click #create': 'createItem',
     },
-    initialize: function(options) {
-      this.users = options.users;
-      _.bindAll(this, 'onmessage', 'onopen', 'onerror', 'onclose');
+    initialize: function() {
       this.listenTo(this.collection, 'reset', this.render);
       this.listenTo(this.collection, 'add', this.renderItem);
     },
-    onmessage: function(result) {
-      var data = JSON.parse(result.data);
-      if (!data) {return;}
-
-      // TODO This should be behavior of Backbone.sync
-      switch (data.body) {
-        case 'init':
-          this.collection.reset(data.content);
-          break;
-        case 'create':
-          this.collection.add(data.content);
-          break;
-        case 'delete':
-          var thing = this.collection.get(data.content.id);
-          this.collection.remove(thing);
-          break;
-        case 'update':
-          this.collection.add(data.content, {merge: true});
-          break;
-        case 'users':
-        case 'join':
-          this.users.add(data.content);
-          break;
-        case 'left':
-          var user = this.users.get(data.content.id);
-          this.users.remove(user);
-          break;
-        case 'error':
-          // Error message, display for a timeout
-          this.$('#errors').prepend(new Error({message: data.content}).el);
-          break;
-        default:
-          // TODO Error
-      }
-    },
-    // websocket methods have default parameter: data
-    onopen: function() {},
-    onerror: function() {},
-    onclose: function() {},
     proxyEnter: function(e) {
       if (e.keyCode === 13) {this.createItem();}
     },
@@ -175,9 +134,8 @@ var ListOfThings = function() {
         return;
       }
 
-      // TODO Create through the collection methods
-      var thing = new Thing({name: $input.val()});
-      thing.save();
+      // Create the new thing
+      this.collection.create({name: $input.val()}, {wait: true});
 
       // Clear the input
       $input.val('');
