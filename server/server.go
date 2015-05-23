@@ -66,7 +66,7 @@ func New(config config.Config, conn sql.Connection) *Server {
 	http.HandleFunc("/", srv.RequireSession(srv.IndexHandler))
 
 	// Feeds
-	hub := feeds.NewHub(srv.users, srv.sessions)
+	hub := feeds.NewHub(config, srv.sessions)
 	http.Handle("/feeds/v1/things", websocket.Handler(hub.Handler))
 
 	// Static Files

@@ -2,10 +2,14 @@
 *.o
 *.a
 *.so
+*.pyc
 
 # Folders
 _obj
 _test
+
+# Logging
+*.log
 
 # Architecture specific extensions/prefixes
 *.[568vq]

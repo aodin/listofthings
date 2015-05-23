@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"code.google.com/p/go.net/websocket"
+	"github.com/aodin/volta/config"
 
 	db "github.com/aodin/listofthings/db"
 	"github.com/aodin/listofthings/server/auth"
@@ -25,7 +26,7 @@ func (c Connection) String() string {
 // Hub matches session keys to connections
 type Hub struct {
 	sync.RWMutex
-	users       *auth.UserManager
+	config      config.Config
 	sessions    *auth.SessionManager
 	connections map[string]Connection
 }
@@ -113,30 +114,20 @@ func (hub *Hub) Users() []db.User {
 
 // Handler is the main websocket handler for users
 func (hub *Hub) Handler(ws *websocket.Conn) {
-	// Wait for the connect message
-	var connect ConnectMessage
-	if err := websocket.JSON.Receive(ws, &connect); err != nil {
-		// Exit early
-		log.Println("Failed to connect:", err)
-		return
-	}
-
-	// Create a hub user from the session key
-	user := hub.sessions.GetUser(connect.SessionKey)
-	if !user.Exists() {
-		// TODO Force an expiration in session? Create a new session?
-		log.Printf("No user with session: %s", connect.SessionKey)
-		return
-	}
-
 	// Wrap the user, session key, and websocket together
-	connection := Connection{
-		User: user,
-		key:  connect.SessionKey,
-		ws:   ws,
+	conn := Connection{ws: ws}
+
+	// Examine the request for the session key and user
+	r := ws.Request()
+	if cookie, err := r.Cookie(hub.config.Cookie.Name); err == nil {
+		conn.key = cookie.Value
+		if conn.User = hub.sessions.GetUser(conn.key); !conn.User.Exists() {
+			log.Printf("No user with session: %s", conn.key)
+			return
+		}
 	}
 
-	hub.Join(connection)
+	hub.Join(conn)
 
 	// Send the initial state of the users list
 	msg := EventMessage{
@@ -158,10 +149,10 @@ Events:
 		// s.HandleMessage(&msg)
 	}
 
-	hub.Leave(connection)
+	hub.Leave(conn)
 }
 
-func NewHub(users *auth.UserManager, sessions *auth.SessionManager) *Hub {
+func NewHub(config config.Config, sessions *auth.SessionManager) *Hub {
 	// Create a memory store with a limited number of items
 	// store := NewMemoryStore(25)
 
@@ -178,8 +169,8 @@ func NewHub(users *auth.UserManager, sessions *auth.SessionManager) *Hub {
 	// http.Handle("/events", websocket.Handler(srv.EventsHandler))
 
 	return &Hub{
-		connections: make(map[string]Connection),
-		users:       users,
+		config:      config,
 		sessions:    sessions,
+		connections: make(map[string]Connection),
 	}
 }
