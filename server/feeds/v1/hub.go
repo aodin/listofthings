@@ -83,33 +83,38 @@ func (hub *Hub) Users() []db.User {
 	return users
 }
 
-func (hub *Hub) HandleMessage(event EventMessage) {
-	// var err error
-	// var thing *db.Thing
+func (hub *Hub) HandleMessage(msg EventMessage) {
+	log.Println("Handling message:", msg)
+	// TODO Check the resources - whitelist?
+	// TODO Handle user renames
 
-	// // TODO Handle user renames
+	var err error
+	if msg.Resource != "things" {
+		err = fmt.Errorf("Unknown resource: %s", msg.Resource)
+	}
+	msg.Resource = "things"
 
-	// switch msg.Method {
-	// case "create":
-	// 	thing, err = s.store.Create(msg.Item)
-	// case "delete":
-	// 	thing, err = s.store.Delete(msg.Item)
-	// case "update":
-	// 	thing, err = s.store.Update(msg.Item)
-	// default:
-	// 	err = fmt.Errorf("Unknown method '%s'", msg.Method)
-	// }
+	// TODO errors will overwrite
+	// TODO persist the changes
+	switch msg.Event {
+	case "create":
+		msg.Event = CREATE
+	case "delete":
+		msg.Event = DELETE
+	case "update":
+		msg.Event = UPDATE
+	default:
+		err = fmt.Errorf("Unknown method: %s", msg.Event)
+	}
 
-	// // Build the return message
-	// var returnMsg v1.Message
-	// if err != nil {
-	// 	returnMsg.Body = "error"
-	// 	returnMsg.Content = err.Error()
-	// } else {
-	// 	returnMsg.Body = msg.Method
-	// 	returnMsg.Content = thing
-	// }
-	// s.BroadcastMessage(&returnMsg)
+	// TODO return an error that will be sent to the sender only
+	if err != nil {
+		log.Printf("error: %s", err)
+		return
+	}
+
+	log.Println("Broadcasting:", msg)
+	hub.Broadcast(msg)
 }
 
 // Handler is the main websocket handler for users
@@ -121,10 +126,12 @@ func (hub *Hub) Handler(ws *websocket.Conn) {
 	r := ws.Request()
 	if cookie, err := r.Cookie(hub.config.Cookie.Name); err == nil {
 		conn.key = cookie.Value
-		if conn.User = hub.sessions.GetUser(conn.key); !conn.User.Exists() {
-			log.Printf("No user with session: %s", conn.key)
-			return
-		}
+	}
+
+	// TODO this will request users even if cookie value was "" - shortcircuit?
+	if conn.User = hub.sessions.GetUser(conn.key); !conn.User.Exists() {
+		log.Printf("No user with session: %s", conn.key)
+		return
 	}
 
 	hub.Join(conn)
@@ -150,6 +157,7 @@ Events:
 	for {
 		var event EventMessage
 		if err := websocket.JSON.Receive(ws, &event); err != nil {
+			log.Printf("error: parse error: %s", err)
 			break Events
 		}
 		hub.HandleMessage(event)

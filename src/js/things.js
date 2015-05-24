@@ -47,6 +47,7 @@ var ListOfThings = function() {
       this.handleEvent(this[payload.resource], payload.method, payload.content);
     },
     handleEvent: function(collection, method, content) {
+      console.log('handling:', collection, method, content); 
       switch (method) {
         case 'LIST':
           collection.reset(content);
@@ -72,7 +73,10 @@ var ListOfThings = function() {
         return;
       }
 
+      // TODO translate the messages here?
+      console.log('sending:', model.collection.url, method);
       var msg = {
+        resource: model.collection.url,
         method: method,
         content: model.toJSON()
       };
