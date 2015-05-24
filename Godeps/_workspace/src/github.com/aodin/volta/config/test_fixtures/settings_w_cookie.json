@@ -1,0 +1,28 @@
+{
+    "domain": "localhost",
+    "port": 9001,
+    "smtp": {
+        "port": 587,
+        "user": "user",
+        "password": "password",
+        "host": "example.com",
+        "from": "no_reply@example.com",
+        "alias": "Example User"
+    },
+    "cookie": {
+        "age": "336h",
+        "domain": "",
+        "http_only": false,
+        "name": "sessionid",
+        "path": "/",
+        "secure": false 
+    },
+    "database": {
+        "driver": "postgres",
+        "host": "localhost",
+        "port": 5432,
+        "name": "db",
+        "user": "pg",
+        "password": "pass" 
+    }
+}
