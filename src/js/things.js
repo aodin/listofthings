@@ -162,8 +162,8 @@ var ListOfThings = function() {
 
   var Item = Backbone.View.extend({
     tagName: 'li',
-    template: _.template('<h3><%= name %> <span class="edit"><small>edit</small></span><span class="delete"><small>delete</small></span></h3>'),
-    editTemplate: _.template('<div class="input-group"><input type="text" class="form-control" value="<%= name %>"><span class="input-group-btn"><button class="btn btn-default" type="button">Save</button></div>'),
+    template: _.template('<h3><%- name %> <span class="edit"><small>edit</small></span><span class="delete"><small>delete</small></span></h3>'),
+    editTemplate: _.template('<div class="input-group"><input type="text" class="form-control" value="<%- name %>"><span class="input-group-btn"><button class="btn btn-default" type="button">Save</button></div>'),
     events: {
       'click .delete': 'deleteItem',
       'click .edit': 'editItem',

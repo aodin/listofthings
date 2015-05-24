@@ -13,8 +13,9 @@ const MaxNameLength = 256
 
 // Thing is a thing with a name
 type Thing struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID      int64  `db:"id,omitempty" json:"id"`
+	Name    string `db:"-" json:"name"`
+	Content string `db:"content" json:"-"`
 	fields.Timestamp
 }
 
@@ -33,6 +34,12 @@ func (t Thing) Error() error {
 		)
 	}
 	return nil
+}
+
+func (t Thing) Values() sql.Values {
+	return sql.Values{
+		"content": t.Content,
+	}
 }
 
 func NewThing(name string) Thing {
